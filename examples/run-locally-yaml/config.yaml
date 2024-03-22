@@ -1,0 +1,4 @@
+registryTokenPath: /20180419/docker/token
+defaultUser: BEARER_TOKEN
+registryProtocol: https
+ocirAuthMethod: USER_PRINCIPAL
