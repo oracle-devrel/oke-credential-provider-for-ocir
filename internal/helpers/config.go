@@ -7,7 +7,7 @@ package helpers
 
 import (
 	"os"
-
+	"strconv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -34,8 +34,20 @@ func ReadConfig(configPath string) Config {
 	if config.OCIRAuthMethod == "" {
 		config.OCIRAuthMethod = "INSTANCE_PRINCIPAL"
 	}
-
 	return config
+}
+
+// Read boolean env var, fallback if missing or invalid.
+func getEnvBool(key string, defaultVal bool) bool {
+  s, ok := os.LookupEnv(key)
+  if !ok {
+    return defaultVal
+  }
+  b, err := strconv.ParseBool(s)
+  if err != nil {
+    return defaultVal
+  }
+  return b
 }
 
 func readConfigFromEnv() Config {
@@ -45,6 +57,7 @@ func readConfigFromEnv() Config {
 		DefaultUser:       os.Getenv("DEFAULT_USER"),
 		RegistryProtocol:  os.Getenv("REGISTRY_PROTOCOL"),
 		OCIRAuthMethod:    os.Getenv("OCIR_AUTH_METHOD"),
+		VerifyToken:       getEnvBool("VERIFY_TOKEN", false),
 	}
 }
 
