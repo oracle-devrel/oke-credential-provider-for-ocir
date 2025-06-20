@@ -6,6 +6,7 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,8 @@ import (
 	"time"
 
 	"github.com/devrocks/credential-provider-oke/internal/helpers"
+	"github.com/docker/docker/api/types/registry"
+	"github.com/docker/docker/client"
 	"github.com/oracle/oci-go-sdk/common"
 	"github.com/oracle/oci-go-sdk/common/auth"
 )
@@ -131,6 +134,23 @@ func GetCredentialProviderResponse(config helpers.Config) {
 	repositoryEndpoint := fmt.Sprintf("%s://%s%s", config.RegistryProtocol, registryHostname, registryTokenPath)
 
 	issuedToken := getDockerToken(repositoryEndpoint, config)
+	if config.VerifyToken {
+		maxDelay := 400 * time.Second
+		var delay time.Duration
+		retry := true
+		var err error
+		for delay = 5 * time.Second; retry && delay < maxDelay; delay *= 2 {
+			retry, err = verifyToken(registryHostname, issuedToken.Token)
+			if retry {
+				helpers.Log(fmt.Sprintf("Token verification failed. Waiting %d s", delay))
+				time.Sleep(delay * time.Second)
+				issuedToken = getDockerToken(repositoryEndpoint, config)
+			}
+			if err != nil {
+				helpers.Log(fmt.Sprintf("Error while verifing token: %s", err.Error()))
+			}
+		}
+	}
 	credentialProviderResponse := newCredentialProviderResponse(issuedToken, registryHostname)
 
 	result, err := json.Marshal(credentialProviderResponse)
@@ -138,4 +158,26 @@ func GetCredentialProviderResponse(config helpers.Config) {
 
 	helpers.Log(string(result))
 	fmt.Print(string(result))
+}
+
+// Verifies that the token can be used to authenticate to the remote registry.
+// It returns a boolean indicating that it can be retried, an an error if there is a problem with the docker client.
+func verifyToken(registryHostname, token string) (bool, error) {
+	client, err := client.NewClientWithOpts(
+		client.WithHost(registryHostname),
+		client.WithAPIVersionNegotiation(),
+	)
+	if err != nil {
+		return false, err
+	}
+	ctx := context.Background()
+	auth := registry.AuthConfig{
+		RegistryToken: token,
+	}
+	_, err = client.RegistryLogin(ctx, auth)
+
+	if err != nil {
+		return true, nil
+	}
+	return false, nil
 }

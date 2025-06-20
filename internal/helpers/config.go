@@ -16,6 +16,7 @@ type Config struct {
 	DefaultUser       string `yaml:"defaultUser"`
 	RegistryProtocol  string `yaml:"registryProtocol"`
 	OCIRAuthMethod    string `yaml:"ocirAuthMethod"`
+	VerifyToken       bool   `yaml:"verifyToken"`
 }
 
 func ReadConfig(configPath string) Config {
