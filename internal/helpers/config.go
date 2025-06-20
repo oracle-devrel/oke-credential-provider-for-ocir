@@ -6,8 +6,9 @@
 package helpers
 
 import (
+	"bytes"
 	"os"
-	"strconv"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -37,27 +38,19 @@ func ReadConfig(configPath string) Config {
 	return config
 }
 
-// Read boolean env var, fallback if missing or invalid.
-func getEnvBool(key string, defaultVal bool) bool {
-  s, ok := os.LookupEnv(key)
-  if !ok {
-    return defaultVal
-  }
-  b, err := strconv.ParseBool(s)
-  if err != nil {
-    return defaultVal
-  }
-  return b
-}
-
 func readConfigFromEnv() Config {
 	defer Log("Configuration loaded from environment variables.")
+	verifyStr := os.Getenv("VERIFY_TOKEN")
+	verifyValue := false
+	if bytes.EqualFold([]byte("true"), []byte(verifyStr)) {
+		verifyValue = true
+	}
 	return Config{
 		RegistryTokenPath: os.Getenv("REGISTRY_TOKEN_PATH"),
 		DefaultUser:       os.Getenv("DEFAULT_USER"),
 		RegistryProtocol:  os.Getenv("REGISTRY_PROTOCOL"),
 		OCIRAuthMethod:    os.Getenv("OCIR_AUTH_METHOD"),
-		VerifyToken:       getEnvBool("VERIFY_TOKEN", false),
+		VerifyToken:       verifyValue,
 	}
 }
 
