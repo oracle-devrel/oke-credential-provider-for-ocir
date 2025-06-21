@@ -6,8 +6,8 @@
 package provider
 
 import (
-	"context"
 	"encoding/json"
+	"strings"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,8 +15,6 @@ import (
 	"time"
 
 	"github.com/devrocks/credential-provider-oke/internal/helpers"
-	"github.com/docker/docker/api/types/registry"
-	"github.com/docker/docker/client"
 	"github.com/oracle/oci-go-sdk/common"
 	"github.com/oracle/oci-go-sdk/common/auth"
 )
@@ -83,7 +81,8 @@ func getDockerToken(urlTokenIssuer string, config helpers.Config) OcirDockerToke
 	body, err := io.ReadAll(tokenResponse.Body)
 	helpers.FatalIfError(err)
 
-	helpers.Log(fmt.Sprintf("Token retrived from %s:\n%s", urlTokenIssuer, string(body)))
+	// helpers.Log(fmt.Sprintf("Token retrieved from %s:\n%s", urlTokenIssuer, string(body)))
+	helpers.Log(fmt.Sprintf("Token retrieved from %s", urlTokenIssuer))
 
 	var dockerToken OcirDockerToken
 	json.Unmarshal(body, &dockerToken)
@@ -96,12 +95,12 @@ func getDockerToken(urlTokenIssuer string, config helpers.Config) OcirDockerToke
 	return dockerToken
 }
 
-func newCredentialProviderResponse(dockerToken OcirDockerToken, image string) CredentialProviderResponse {
+func newCredentialProviderResponse(dockerToken OcirDockerToken, image string, cacheDuration string) CredentialProviderResponse {
 	return CredentialProviderResponse{
 		Kind:          "CredentialProviderResponse",
 		APIVersion:    "credentialprovider.kubelet.k8s.io/v1",
 		CacheKeyType:  "Registry",
-		CacheDuration: helpers.FormatTimeDuration(dockerToken.ExpiresIn),
+		CacheDuration: cacheDuration,
 		Auth: map[string]AuthConfig{
 			image: {
 				Username: "BEARER_TOKEN",
@@ -122,6 +121,7 @@ func readCredentialProviderRequestFromStdin() CredentialProviderRequest {
 	} else {
 		helpers.FatalIfDescription("Stdin data is missing. Please supply the program with the proper CredentialProviderRequest json")
 	}
+
 	return credentialProviderRequest
 }
 
@@ -129,55 +129,66 @@ func GetCredentialProviderResponse(config helpers.Config) {
 	registryTokenPath := config.RegistryTokenPath
 
 	credentialProviderRequest := readCredentialProviderRequestFromStdin()
-	registryHostname := helpers.ExtractHostname(credentialProviderRequest.Image)
+	helpers.Log(fmt.Sprintf("credentialProviderRequest: %s", credentialProviderRequest))
+	registryHostname, image, tag, err := helpers.ParseImage(credentialProviderRequest.Image)
 
-	repositoryEndpoint := fmt.Sprintf("%s://%s%s", config.RegistryProtocol, registryHostname, registryTokenPath)
+	repositoryUrl := fmt.Sprintf("%s://%s", config.RegistryProtocol, registryHostname)
+	repositoryEndpoint := fmt.Sprintf("%s%s", repositoryUrl, registryTokenPath)
 
 	issuedToken := getDockerToken(repositoryEndpoint, config)
-	if config.VerifyToken {
-		maxDelay := 400 * time.Second
-		var delay time.Duration
-		retry := true
-		var err error
-		for delay = 5 * time.Second; retry && delay < maxDelay; delay *= 2 {
-			retry, err = verifyToken(registryHostname, issuedToken.Token)
-			if retry {
-				helpers.Log(fmt.Sprintf("Token verification failed. Waiting %d s", delay))
-				time.Sleep(delay * time.Second)
-				issuedToken = getDockerToken(repositoryEndpoint, config)
-			}
-			if err != nil {
-				helpers.Log(fmt.Sprintf("Error while verifing token: %s", err.Error()))
-			}
+
+	duration := issuedToken.ExpiresIn
+	if config.TokenValidation == "enabled" {
+		duration = 120 // Initiate the provider with a short lived cache when validating
+	}
+	cacheDuration := helpers.FormatTimeDuration(duration)
+
+	valid := false
+	var status string
+	if config.TokenValidation == "enabled" && !strings.Contains(image, "oke-public") {
+		imageManifest := fmt.Sprintf("%s/v2/%s/manifests/%s", repositoryUrl, image, tag)
+		valid, status = tokenValidation(imageManifest, AuthConfig{
+			Username: "BEARER_TOKEN",
+			Password: issuedToken.Token,
+		})
+		helpers.Log(fmt.Sprintf("Token validation for %s results. Valid: %t; Status: %v", imageManifest, valid, status))
+		if valid {
+			// Token is working for private regs; increase the cache
+			cacheDuration = helpers.FormatTimeDuration(issuedToken.ExpiresIn)
 		}
 	}
-	credentialProviderResponse := newCredentialProviderResponse(issuedToken, registryHostname)
+	helpers.Log(fmt.Sprintf("Provider cacheDuration: %s", cacheDuration))
+	credentialProviderResponse := newCredentialProviderResponse(issuedToken, registryHostname, cacheDuration)
 
 	result, err := json.Marshal(credentialProviderResponse)
 	helpers.FatalIfError(err)
 
-	helpers.Log(string(result))
+	// helpers.Log(fmt.Sprintf("credentialProviderResponse: %s", credentialProviderResponse))
 	fmt.Print(string(result))
 }
 
 // Verifies that the token can be used to authenticate to the remote registry.
-// It returns a boolean indicating that it can be retried, an an error if there is a problem with the docker client.
-func verifyToken(registryHostname, token string) (bool, error) {
-	client, err := client.NewClientWithOpts(
-		client.WithHost(registryHostname),
-		client.WithAPIVersionNegotiation(),
-	)
+func tokenValidation(manifestUrl string, auth AuthConfig) (valid bool, status string) {
+	req, err := http.NewRequest("GET", manifestUrl, nil)
 	if err != nil {
-		return false, err
+		return false, fmt.Sprintf("failed to create request: %w", err)
 	}
-	ctx := context.Background()
-	auth := registry.AuthConfig{
-		RegistryToken: token,
-	}
-	_, err = client.RegistryLogin(ctx, auth)
 
+	req.Header.Add("Authorization", "Bearer "+auth.Password)
+	req.Header.Add("Accept", "application/vnd.docker.distribution.manifest.v2+json")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return true, nil
+		return false, fmt.Sprintf("request failed: %w", err)
 	}
-	return false, nil
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return true, fmt.Sprintf("successful response: %s", resp.Status)
+	case http.StatusForbidden:
+		return false, fmt.Sprintf("failed response: %s", resp.Status)
+	default:
+		return false, fmt.Sprintf("failed response: %s", resp.Status)
+	}
 }
