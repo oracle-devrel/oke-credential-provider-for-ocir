@@ -184,6 +184,8 @@ func tokenValidate(manifestUrl string, auth AuthConfig) (valid bool, status stri
 	defer resp.Body.Close()
 
 	switch resp.StatusCode {
+	case http.StatusOK:
+		return true, fmt.Sprintf("successful response: %s", resp.Status)
 	case http.StatusNotFound:
 		return true, fmt.Sprintf("successful response: %s", resp.Status)
 	case http.StatusForbidden:
