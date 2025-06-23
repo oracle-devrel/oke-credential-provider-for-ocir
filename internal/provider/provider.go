@@ -147,7 +147,7 @@ func GetCredentialProviderResponse(config helpers.Config) {
 	var status string
 	if config.TokenValidation == "enabled" && !strings.Contains(image, "oke-public") {
 		imageManifest := fmt.Sprintf("%s/v2/%s/manifests/%s", repositoryUrl, image, tag)
-		valid, status = tokenValidation(imageManifest, AuthConfig{
+		valid, status = tokenValidate(imageManifest, AuthConfig{
 			Username: "BEARER_TOKEN",
 			Password: issuedToken.Token,
 		})
@@ -168,7 +168,7 @@ func GetCredentialProviderResponse(config helpers.Config) {
 }
 
 // Verifies that the token can be used to authenticate to the remote registry.
-func tokenValidation(manifestUrl string, auth AuthConfig) (valid bool, status string) {
+func tokenValidate(manifestUrl string, auth AuthConfig) (valid bool, status string) {
 	req, err := http.NewRequest("GET", manifestUrl, nil)
 	if err != nil {
 		return false, fmt.Sprintf("failed to create request: %w", err)
