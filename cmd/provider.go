@@ -10,9 +10,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/gofrs/flock"
 	"github.com/devrocks/credential-provider-oke/internal/helpers"
 	"github.com/devrocks/credential-provider-oke/internal/provider"
+	"github.com/gofrs/flock"
 )
 
 func main() {
@@ -27,6 +27,7 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
+	defer fileLock.Unlock()
 
 	if !locked {
 		// Lock is held by another process, sleep then exit
@@ -34,7 +35,6 @@ func main() {
 		time.Sleep(1 * time.Second)
 		os.Exit(0)
 	}
-	defer fileLock.Unlock()
 
 	config := helpers.ReadConfig(configType)
 	provider.GetCredentialProviderResponse(config)
