@@ -6,18 +6,24 @@
 package helpers
 
 import (
-	"os"
+	"bytes"
 	"fmt"
+	"os"
+
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	// Config can be sent in as EnvVars; so MUST be string
+	// ConfigMaps always use strings, even for YAML; so everything MUST be string
 	RegistryTokenPath string `yaml:"registryTokenPath"`
 	DefaultUser       string `yaml:"defaultUser"`
 	RegistryProtocol  string `yaml:"registryProtocol"`
 	OCIRAuthMethod    string `yaml:"ocirAuthMethod"`
 	TokenValidation   string `yaml:"tokenValidation"`
+}
+
+func (config Config) IsTokenValidationEnabled() bool {
+	return bytes.EqualFold([]byte("enabled"), []byte(config.TokenValidation))
 }
 
 func ReadConfig(configPath string) Config {

@@ -7,11 +7,11 @@ package provider
 
 import (
 	"encoding/json"
-	"strings"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/devrocks/credential-provider-oke/internal/helpers"
@@ -138,14 +138,14 @@ func GetCredentialProviderResponse(config helpers.Config) {
 	issuedToken := getDockerToken(repositoryEndpoint, config)
 
 	duration := issuedToken.ExpiresIn
-	if config.TokenValidation == "enabled" {
+	if config.IsTokenValidationEnabled() {
 		duration = 120 // Initiate the provider with a short lived cache when validating
 	}
 	cacheDuration := helpers.FormatTimeDuration(duration)
 
 	valid := false
 	var status string
-	if config.TokenValidation == "enabled" && !strings.Contains(image, "oke-public") {
+	if config.IsTokenValidationEnabled() && !strings.Contains(image, "oke-public") {
 		imageManifest := fmt.Sprintf("%s/v2/%s/manifests/%s", repositoryUrl, image, tag)
 		valid, status = tokenValidate(imageManifest, AuthConfig{
 			Username: "BEARER_TOKEN",
