@@ -6,8 +6,8 @@
 package helpers
 
 import (
-	"regexp" 
 	"fmt"
+	"regexp"
 )
 
 func ParseImage(image string) (hostname, repository, tag string, err error) {
