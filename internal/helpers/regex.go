@@ -5,15 +5,25 @@
 
 package helpers
 
-import "regexp"
+import (
+	"fmt"
+	"regexp"
+)
 
-func ExtractHostname(imageName string) string {
-	regexPattern := `^(?:https?://)?(?:[^@/\n]+@)?(?:www\.)?([^:/\n]+)`
-	regex := regexp.MustCompile(regexPattern)
-	match := regex.FindStringSubmatch(imageName)
-	var hostname string
-	if len(match) > 1 {
-		hostname = match[1]
+func ParseImage(image string) (hostname, repository, tag string, err error) {
+	regexPattern := `^([a-zA-Z0-9.-]+(?::[0-9]+)?)/([^:]+)(?::(.+))?$`
+	re := regexp.MustCompile(regexPattern)
+	matches := re.FindStringSubmatch(image)
+	if len(matches) == 0 {
+		err = fmt.Errorf("invalid image format")
+		return
 	}
-	return hostname
+
+	hostname = matches[1]
+	repository = matches[2]
+	tag = matches[3]
+	if tag == "" {
+		tag = "latest"
+	}
+	return
 }

@@ -23,5 +23,6 @@ func init() {
 }
 
 func Log(message string) {
-	Logger.Println(message)
+	pid := os.Getpid()
+	Logger.Printf("[PID %d] %s", pid, message)
 }

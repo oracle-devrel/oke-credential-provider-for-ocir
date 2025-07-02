@@ -1,6 +1,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/macos,go,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=macos,go,visualstudiocode
 
+### Binary ###
+oke-credential-provider-for-ocir-linux-amd64
+
 ### Go ###
 # If you prefer the allow list template instead of the deny list, see community template:
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
